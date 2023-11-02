@@ -1,9 +1,7 @@
 # -*- coding: UTF-8 -*-
 
 """
-Author: Matteo Esposito
-Created: Fall 2019
-Revamp: Pierre-Claude Gacette Sanon
+Author: Pierre PCJRS
 Updated: Fall 2023
 """
 
@@ -40,6 +38,7 @@ class GradeBot:
         opts = webdriver.FirefoxOptions()
         opts.headless = True
         self.bot = webdriver.Firefox(options=opts)
+
 
     def login(self):
         """Uses username and password to login to the student portal.
@@ -78,34 +77,58 @@ class GradeBot:
         time.sleep(2)
         bot.find_element(By.CSS_SELECTOR, 'a[data-select-value="1030"]').click()
         time.sleep(4)
-        print('Current URL:', bot.current_url)
-        print("✓ Grade Access SUCCESS.")
+        #print('Current URL:', bot.current_url)
+        print("✓ Grade Page ACCESSED.")
 
-    def goto_grades(self, semester, old_format=False):
+
+        #List array of semesters
+
+        #Find the HTML code block of the grades table    
+        html_code = bot.find_element(By.ID, 'SSR_DUMMY_RECV1$scroll$0').get_attribute('outerHTML')
+
+        # Parse the HTML
+        soup1 = BeautifulSoup(html_code, 'html.parser')
+
+        # Find all elements with IDs containing 'TERM_CAR$'
+        term_elements = soup1.find_all('span', {'id': lambda x: x and 'TERM_CAR$' in x})
+
+        # Extract the terms and create table
+        terms_data = {
+            'Term': [element.text for element in term_elements],
+        }
+        df_terms_data = pd.DataFrame(terms_data)
+        self.Term_List = df_terms_data['Term'].values
+
+        
+        #Print the available terms for user
+        print('✓ Terms list SUCCESS. \n', df_terms_data['Term'])
+        self.semester = input('Semester: ')
+        
+
+
+    def goto_grades(self, old_format=False):
         """Get to grade section after clicking on the radio button corresponding to the user input for 'semester'.
 
         Arguments:
             semester {String} -- Semester from Fall 2016 to Winter 2020.
             old_format {bool} -- Perform additional button click post-app update.
         """
+        #df_terms_data = pd.DataFrame(self.df_terms_data)
         bot = self.bot
-
+        
         # Change semester view.
         if not old_format:
-            #bot.find_element(By.XPATH,'//input[@class="PSPUSHBUTTON"][@name="DERIVED_SSS_SCT_SSS_TERM_LINK"]'
-            #                          '[@id="DERIVED_SSS_SCT_SSS_TERM_LINK"][@type="button"]').click()
-            print('SUCCESS Line 96')
             time.sleep(2)
 
         # Semester selection
-        if semester not in cfg['semester_mapping'].keys():
-            print('Unsupported/invalid semester. Choose semester between Fall 2016 and Winter 2020.')
+        if self.semester not in self.Term_List:
+            print('Unsupported/invalid semester. Choose semester between Fall 2015 and Winter 2023.')
             sys.exit(1)
 
-        idval = cfg['semester_mapping'][semester]
+        idval = self.Term_List.tolist().index(self.semester)
         chosen_id = "SSR_DUMMY_RECV1$sels$" + str(idval) + "$$0"
         bot.find_element(By.ID,chosen_id).click()
-        print('Success line 110')
+        print('✓ Found ', self.semester, 'Term SUCCESS.')
 
     def output_vmg(self):
         """Output what is seen at 'view my grades' on myconcordia portal.
@@ -113,7 +136,6 @@ class GradeBot:
         bot = self.bot
 
         # GRADES
-        #bot.find_element_by_xpath('//input[@class="PSPUSHBUTTON"][@name="DERIVED_SSS_SCT_SSR_PB_GO"][@type="button"]').click()
         bot.find_element(By.XPATH, "//li[@data-gh-page-link='SSR_SSENRL_TERM' and @data-gh-item-link='DERIVED_SSS_SCT_SSR_PB_GO']//a").click()
         #print('Success line 117')
 
@@ -161,7 +183,7 @@ class GradeBot:
         page = open(site)
         soup = BeautifulSoup(page.read(), features="html.parser")
         #os.remove('dist.html')
-        #print('Success line 161')
+        print('SUCCESS line 192')
 
         # Parse distribution table
         dist = []
@@ -175,17 +197,30 @@ class GradeBot:
             dist.append([ele for ele in cols])
 
         # Convert to dataframe
-        dist_df = pd.DataFrame(dist).drop([0])
-        dist_df.insert(0, 'Class', grades_df.Class)
-        dist_df.columns = ['Class', '', 'A+', 'A', 'A-', 'B+', 'B', 'B-',
+        dist_df = pd.DataFrame(dist)
+        dist_df.columns = ['Class', 'A+', 'A', 'A-', 'B+', 'B', 'B-',
                            'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F', 'FNS', 'R', 'NR']
 
-        # Fixing missing class name in cell (1, 1)
-        dist_df.Class = dist_df.Class.shift(-1)
-        dist_df.Class.loc[dist_df.shape[0]] = grades_df.Class[grades_df.shape[0]+1]
+        return grades_df, dist_df   
+        bot.quit
 
-        bot.quit()
-        return grades_df, dist_df
+
+    def goto_newsearch(self):
+        """Output a new semester on myconcordia portal.
+        """
+        bot = self.bot
+
+        # See other Terms
+        user_input = input('Would you like to see other term (Yes/No): ')
+        
+        if user_input.lower() == 'yes':
+            # Code to handle 'Yes' case
+            bot.find_element(By.XPATH, "//li[@data-gh-page-link='SSR_SSENRL_GRADE' and @data-gh-item-link='DERIVED_SSS_SCT_SSS_TERM_LINK']//a/span").click()
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print('User wants to see other term.')
+        else:
+            bot.quit()
+
 
     def send_message(self, grades_table, distribution_table, bot_pwd):
         """SMTP/ESMTP client for automated emails.
@@ -239,15 +274,17 @@ class GradeBot:
         server.login(msg['From'], bot_pwd)
         text = msg.as_string()  # You now need to convert the MIMEMultipart object to a string to send
         server.sendmail(msg['From'], msg['To'], text)
+        print('SUCCESS - Message Sent')
         server.quit()
 
 if __name__ == '__main__':
 
     # Accept user input for username, passwords and semester
-    user = input('Username: ')
-    pwd = getpass.getpass()
+    #user = input('Username: ')
+    user = 'P_Gacett'
+    #pwd = getpass.getpass()
+    pwd = 'Burnout5!'
     #bot_pwd = getpass.getpass() #d7
-    semester = input('Semester: ')
     checker = GradeBot(user, pwd)
     old_grades = pd.DataFrame({"Letter Grade": ["", "", "", ""]})
 
@@ -257,9 +294,9 @@ if __name__ == '__main__':
         checker.login()
 
         # Fetch grades
-        checker.goto_grades(semester)
+        checker.goto_grades()
         grades, distribution = checker.output_vmg()
-
+        
         # Print tables depending on config option.
         if cfg['options']['console_log_tables']:
             print(grades.to_string(index=False) + '\n\n' + distribution.to_string(index=False) + '\n')
@@ -279,3 +316,6 @@ if __name__ == '__main__':
 
         # Run every 30 min
         time.sleep(cfg['options']['time_interval'])
+
+        #See other semesters
+        #checker.goto_newsearch()
