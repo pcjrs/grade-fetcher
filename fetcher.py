@@ -280,10 +280,8 @@ class GradeBot:
 if __name__ == '__main__':
 
     # Accept user input for username, passwords and semester
-    #user = input('Username: ')
-    user = 'P_Gacett'
-    #pwd = getpass.getpass()
-    pwd = 'Burnout5!'
+    user = input('Username: ')
+    pwd = getpass.getpass()
     #bot_pwd = getpass.getpass() #d7
     checker = GradeBot(user, pwd)
     old_grades = pd.DataFrame({"Letter Grade": ["", "", "", ""]})
